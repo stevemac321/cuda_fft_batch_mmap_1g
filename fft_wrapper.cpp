@@ -3,6 +3,8 @@
 
 namespace fs = std::filesystem;
 
+extern float outliers[10][128];
+
 // USER CODE BEGIN
 
 void CUDAMemMapFFT(const char *mapdir, const size_t chunk_size) {
@@ -69,6 +71,12 @@ void CUDAMemMapFFT(const char *mapdir, const size_t chunk_size) {
       std::memcpy(voltage.get(), data_ptr + i * chunk_size,
                   chunk_size * sizeof(float));
 
+      // SVM prediction on raw voltage data
+      auto pred = 0;
+      arm_svm_polynomial_predict_f32(&svm, voltage.get(), &pred);
+      if (pred != 1) {
+        std::printf("Anomaly detected at row %zu (pred = %d)\n", row, pred);
+      }
       for (size_t j = 0; j < chunk_size; ++j) {
         fft_input[j * 2 + 0] = voltage[j];
         fft_input[j * 2 + 1] = 0.0f;
@@ -151,6 +159,26 @@ void CUDAFFT(const char *logfile, const int header_offset,
 
   std::printf("CUDA FFT (%zu rows), %zu Floats took %.2f ms\n", total_rows,
               total_rows * chunk_size, elapsed.count() / 1000.0);
+}
+void SVMOutliers() {
+
+  printf("outlier test \n");
+  int i = 0;
+  int correct = 0;
+
+  for (; i < 10; i++) {
+
+    int32_t pred = 0;
+    arm_svm_polynomial_predict_f32(&svm, outliers[i], &pred);
+    if (pred == -1) {
+      correct++;
+    }
+    std::printf("Row: %d, pred: %d\n", i, pred);
+  }
+  std::printf("\n---- Final Report ----\n");
+  std::printf("Total Rows Processed: %d\n", i);
+  std::printf("Correct Predictions:    %d\n", correct);
+  std::printf("----------------------\n");
 }
 /*
 void CUDAFFT(const char *logfile, const int header_offset,

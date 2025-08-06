@@ -51,6 +51,7 @@ int main()
     }
     //CUDAFFT(logfile1024,78,1024,128);
     CUDAMemMapFFT(memmap_dir, 128);
+    SVMOutliers();
     return 0;
 }
 
