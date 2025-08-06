@@ -1,3 +1,8 @@
+/*
+
+*/
+
+#include <cuda_runtime.h>
 #include "fft_wrapper.h"
 #include <filesystem> // For directory iteration
 
@@ -6,14 +11,24 @@ namespace fs = std::filesystem;
 extern float outliers[10][128];
 
 // USER CODE BEGIN
-
+#define LOG_FFT
 void CUDAMemMapFFT(const char *mapdir, const size_t chunk_size) {
   auto voltage = std::make_unique<float[]>(chunk_size);
-  auto fft_input = std::make_unique<float[]>(chunk_size * 2);
+  auto fft_input =
+      std::make_unique<float[]>(chunk_size * 2); // interleaved real/imag
 
+  // Allocate device buffer for FFT
+  cufftComplex *d_data = nullptr;
+  cudaMalloc(&d_data, chunk_size * sizeof(cufftComplex));
+
+  // Create FFT plan
   cufftHandle plan;
-  cufftComplex *data = reinterpret_cast<cufftComplex *>(fft_input.get());
-  cufftPlan1d(&plan, chunk_size / 2, CUFFT_C2C, 1);
+  cufftResult plan_status = cufftPlan1d(&plan, chunk_size, CUFFT_C2C, 1);
+  if (plan_status != CUFFT_SUCCESS) {
+    std::fprintf(stderr, "FFT plan creation failed: %d\n", plan_status);
+    cudaFree(d_data);
+    return;
+  }
 
   std::printf("Beginning FFT...\n");
   auto start = std::chrono::high_resolution_clock::now();
@@ -77,15 +92,30 @@ void CUDAMemMapFFT(const char *mapdir, const size_t chunk_size) {
       if (pred != 1) {
         std::printf("Anomaly detected at row %zu (pred = %d)\n", row, pred);
       }
+
+      // Prepare FFT input: interleaved real/imag
       for (size_t j = 0; j < chunk_size; ++j) {
-        fft_input[j * 2 + 0] = voltage[j];
-        fft_input[j * 2 + 1] = 0.0f;
+        fft_input[j * 2 + 0] = voltage[j]; // real
+        fft_input[j * 2 + 1] = 0.0f;       // imag
       }
 
-      cufftExecC2C(plan, data, data, CUFFT_FORWARD);
+      // Copy input to device
+      cudaMemcpy(d_data, fft_input.get(), chunk_size * sizeof(cufftComplex),
+                 cudaMemcpyHostToDevice);
+
+      // Execute FFT
+      cufftResult result = cufftExecC2C(plan, d_data, d_data, CUFFT_FORWARD);
+      if (result != CUFFT_SUCCESS) {
+        std::printf("FFT failed: %d\n", result);
+        continue;
+      }
+
+      // Copy result back to host
+      cudaMemcpy(fft_input.get(), d_data, chunk_size * sizeof(cufftComplex),
+                 cudaMemcpyDeviceToHost);
 
 #ifdef LOG_FFT
-      for (size_t k = 0; k < chunk_size / 2; ++k) {
+      for (size_t k = 0; k < chunk_size; ++k) {
         float real = fft_input[k * 2 + 0];
         float imag = fft_input[k * 2 + 1];
         std::printf("Bin %4zu: % .6f + % .6fi\n", k, real, imag);
@@ -99,18 +129,22 @@ void CUDAMemMapFFT(const char *mapdir, const size_t chunk_size) {
   }
 
   cufftDestroy(plan);
+  cudaFree(d_data);
+
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::micro> elapsed = end - start;
 
   std::printf("CUDA FFT (%zu rows), %zu floats took %.2f ms\n", row,
               row * chunk_size, elapsed.count() / 1000.0);
 }
+
 // #define LOG_FFT
 void CUDAFFT(const char *logfile, const int header_offset,
              const size_t total_rows, const size_t chunk_size) {
 
   auto voltage = std::make_unique<float[]>(chunk_size);
-  auto fft_input = std::make_unique<float[]>(chunk_size * 2);
+  auto fft_input =
+      std::make_unique<float[]>(chunk_size * 2); // interleaved real/imag
 
   std::ifstream ifs(logfile, std::ios::binary);
   if (!ifs) {
@@ -118,10 +152,21 @@ void CUDAFFT(const char *logfile, const int header_offset,
     return;
   }
 
-  // FFT setup once, reused each pass
+  // Skip header if needed
+  ifs.seekg(header_offset, std::ios::beg);
+
+  // Allocate device buffer for FFT
+  cufftComplex *d_data = nullptr;
+  cudaMalloc(&d_data, chunk_size * sizeof(cufftComplex));
+
+  // Create FFT plan
   cufftHandle plan;
-  cufftComplex *data = reinterpret_cast<cufftComplex *>(fft_input.get());
-  cufftPlan1d(&plan, chunk_size / 2, CUFFT_C2C, 1);
+  cufftResult plan_status = cufftPlan1d(&plan, chunk_size, CUFFT_C2C, 1);
+  if (plan_status != CUFFT_SUCCESS) {
+    std::fprintf(stderr, "FFT plan creation failed: %d\n", plan_status);
+    cudaFree(d_data);
+    return;
+  }
 
   printf("Beginning FFT...\n");
   auto start = std::chrono::high_resolution_clock::now();
@@ -140,20 +185,33 @@ void CUDAFFT(const char *logfile, const int header_offset,
       fft_input[i * 2 + 1] = 0.0f;       // Imag
     }
 
-    // Perform FFT
-    cufftExecC2C(plan, data, data, CUFFT_FORWARD);
+    // Copy input to device
+    cudaMemcpy(d_data, fft_input.get(), chunk_size * sizeof(cufftComplex),
+               cudaMemcpyHostToDevice);
 
-    // Optionally post-process FFT result
-#ifdef LOG_FFT
-    for (size_t i = 0; i < chunk_size / 2; ++i) {
-      float real = fft_input[i * 2 + 0];
-      float imag = fft_input[i * 2 + 1];
-      std::printf("Bin %4zu: % .6f + % .6fi\n", i, real, imag);
+    // Perform FFT
+    cufftResult exec_status = cufftExecC2C(plan, d_data, d_data, CUFFT_FORWARD);
+    if (exec_status != CUFFT_SUCCESS) {
+      std::printf("FFT execution failed at row %zu: %d\n", row, exec_status);
+      continue;
     }
 
+    // Copy result back to host
+    cudaMemcpy(fft_input.get(), d_data, chunk_size * sizeof(cufftComplex),
+               cudaMemcpyDeviceToHost);
+
+#ifdef LOG_FFT
+    for (size_t k = 0; k < chunk_size; ++k) {
+      float real = fft_input[k * 2 + 0];
+      float imag = fft_input[k * 2 + 1];
+      std::printf("Bin %4zu: % .6f + % .6fi\n", k, real, imag);
+    }
 #endif
   }
+
   cufftDestroy(plan);
+  cudaFree(d_data);
+
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::micro> elapsed = end - start;
 
@@ -180,60 +238,3 @@ void SVMOutliers() {
   std::printf("Correct Predictions:    %d\n", correct);
   std::printf("----------------------\n");
 }
-/*
-void CUDAFFT(const char *logfile, const int header_offset,
-             const size_t total_samples, const size_t chunk_size)
-{
-
-  auto voltage = std::make_unique<float[]>(chunk_size);
-
-  std::ifstream ifs(logfile, std::ios::binary);
-  if (!ifs) {
-    std::cerr << "Failed to open file: " << logfile << "\n";
-    return;
-  }
-
-  // Reads all floats
-  ifs.read(reinterpret_cast<char *>(voltage.get()), rowsize * sizeof(float));
-
-  if (!ifs) {
-    std::cerr << "File read incomplete or failed\n";
-    return;
-  }
-  // Prepare FFT input (interleaved complex)
-  auto fft_input = std::make_unique<float[]>(fft_size * 2);
-  for (size_t i = 0; i < chunk_size; ++i) {
-    fft_input[i * 2 + 0] = voltage[i]; // Real
-    fft_input[i * 2 + 1] = 0.0f;       // Imag
-  }
-
-  cufftComplex *data = reinterpret_cast<cufftComplex *>(voltage.get());
-  cufftHandle plan;
-  const int fft_buffer = (chunk_size / 2);
-
-  printf("beginning FFT\n");
-  auto start = std::chrono::high_resolution_clock::now();
-  // put FFT call here
-
-
-  cufftPlan1d(&plan, fft_buffer, CUFFT_C2C, 1);
-  cufftExecC2C(plan, data, data, CUFFT_FORWARD);
-  cufftDestroy(plan);
-
-  auto end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double, std::micro> elapsed = end - start;
-
-
-#ifdef LOG_FFT
-  for (size_t i = 0; i < fft_size; ++i) {
-    float real = fft_input[i * 2 + 0];
-    float imag = fft_input[i * 2 + 1];
-    std::printf("Bin %4zu: % .6f + % .6fi\n", i, real, imag);
-  }
-#endif
-
-  std::printf("CUDA FFT (%zu samples) took %.2f ms\n", fft_size,
-              elapsed.count());
-
-}
-*/
