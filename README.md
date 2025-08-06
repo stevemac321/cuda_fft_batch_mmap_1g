@@ -4,7 +4,8 @@
 
 This project processes high-throughput voltage telemetry collected from STM32F4xx microcontrollers. It performs batched FFT analysis on 1GB of data using CUDA, applies anomaly detection via CMSIS-DSP and scikit-learn SVM, and generates detailed signal reports with Matplotlib. Performance metrics are captured using CUDA Insight and Visual Studio debugging tools.
 
-##NOTE## The file CudaFFT-Demo.pdf is the spec.  TODO: conditional compilation for telemetry data, separate from timing data, write to mmSignalReport, signal_report.py and benchmark.py.
+##NOTE## The file CudaFFT-Demo.pdf is the spec.  TODO: conditional compilation for telemetry data, separate from timing data, write to mmSignalReport, signal_report.py and benchmark.py.  
+-also benchmark CMSIS-DSP FFT outside of the Cuda Engine.
 
 ---
 
