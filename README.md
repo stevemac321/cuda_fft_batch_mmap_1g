@@ -1,8 +1,8 @@
 ## 🚀 `cuda_fft_batch_mmap_1gb`
-## TODO - grab SVM stuff from DSPServer, copy in CMSIS-DSP, demo the big logfile compared to memory mapped files, add the .json code that captures all the global FFT data to pass to Matplotlib##
+## demo the big logfile compared to memory mapped files, add the .json code that captures all the global FFT data to pass to Matplotlib##
 ### Overview
 
-This project processes high-throughput voltage telemetry collected from STM32F4xx microcontrollers. It performs batched FFT analysis on 1GB of data using CUDA, (TODO applies anomaly detection via CMSIS-DSP and scikit-learn SVM), and generates detailed signal reports with Matplotlib. Performance metrics are captured using CUDA Insight and Visual Studio debugging tools.
+This project processes high-throughput voltage telemetry collected from STM32F4xx microcontrollers. It performs batched FFT analysis on 1GB of data using CUDA, applies anomaly detection via CMSIS-DSP and scikit-learn SVM, and generates detailed signal reports with Matplotlib. Performance metrics are captured using CUDA Insight and Visual Studio debugging tools.
 
 ---
 
@@ -67,13 +67,63 @@ This project processes high-throughput voltage telemetry collected from STM32F4x
 
 - Python 3.10+
 - NumPy, Matplotlib
-- scikit-learn (for training SVM)
+- scikit-learn (for training SVM if you want to train, it works for STM32F4xx voltage data).
 - cuFFT (CUDA FFT)
 - CUDA Toolkit + Visual Studio (for profiling)
 
+---Project--
+-I use VS, install CUDA SDK, CMSIS/DSP it is a zipfile in this project, just extract it and make it a peer to lib and the .cpp and .h file
+
 ---
 
-### 📺 Demo
+### 🎯 CUDA 12.1 + Visual Studio Setup
+
+#### 🔗 **Download Installer**
+- [CUDA Toolkit 12.1 (Windows)](https://developer.nvidia.com/cuda-12-1-0-download-archive)
+- Choose **Local Installer** for full offline installation
+- Confirm **Visual Studio Integration** is selected during setup
+
+#### ✅ **Supported Visual Studio Versions**
+- **Visual Studio 2019** (MSVC v142)
+- **Visual Studio 2022** (MSVC v143)
+
+> ⚠️ If you're using VS 2022 17.10 or newer, CUDA 12.1 may require a newer toolkit (e.g. 12.4+) or manual workaround. CUDA 12.1 officially supports up to VS 2022 17.4.
+
+---
+
+### 🛠️ Visual Studio Project Configuration
+
+#### 📁 **Include Directories**
+Add to **Project → Properties → C/C++ → General → Additional Include Directories**:
+```
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1\include
+```
+
+#### 📁 **Library Directories**
+Add to **Project → Properties → Linker → General → Additional Library Directories**:
+```
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1\lib\x64
+```
+
+#### 📄 **Linker Input**
+Add to **Project → Properties → Linker → Input → Additional Dependencies**:
+```
+cudart.lib
+cufft.lib
+```
+
+---
+
+### 🧩 Optional: CUDA Build Customization
+
+If you're compiling `.cu` files:
+- Set **Item Type** to `CUDA C/C++`
+- Use **CUDA C/C++ → Device → Code Generation** to match your GPU architecture (e.g. `compute_86,sm_86`)
+- Use **CUDA C/C++ → Common → Additional Options** for flags like `--use_fast_math` or `--ptxas-options=-v`
+
+---
+
+### 📺 Demo Coming soon...
 
 A YouTube demo will showcase:
 
