@@ -1,11 +1,11 @@
 ## 🚀 `cuda_fft_batch_mmap_1gb`
-## demo the big logfile compared to memory mapped files, add the .json code that captures all the global FFT data to pass to Matplotlib##
+## add the .json code that captures all the global FFT data to pass to Matplotlib##
 ### Overview
 
-This project processes high-throughput voltage telemetry collected from STM32F4xx microcontrollers. It performs batched FFT analysis on 1GB of data using CUDA, applies anomaly detection via CMSIS-DSP and scikit-learn SVM, and generates detailed signal reports with Matplotlib. Performance metrics are captured using CUDA Insight and Visual Studio debugging tools.
+This project processes high-throughput voltage telemetry collected from STM32F4xx microcontrollers. It performs batched FFT analysis on 1GB of data using CUDA and Intel MKL libraries.  It generates detailed signal reports with Matplotlib. Performance metrics are captured using CUDA Insight and Visual Studio debugging tools.
 
 ##NOTE## The file CudaFFT-Demo.pdf is the spec.  TODO: conditional compilation for telemetry data, separate from timing data, write to mmSignalReport, signal_report.py and benchmark.py.  
--also benchmark CMSIS-DSP FFT outside of the Cuda Engine.
+
 
 ---
 
@@ -17,9 +17,10 @@ This project processes high-throughput voltage telemetry collected from STM32F4x
    - 12 files × 16MB = 192MB per batch (scaled to 1GB in full runs)
 
 2. **FFT Processing**
-   - (TODO run the raw voltage chunk thru outlier detection)
-   - CUDA FFT on 128-float chunks (393216 rows per 192MB batch)
-   - cuFFT throughput: ~106 ms for 50M+ floats
+   - scripts to capture voltage or any signal from your microcontroller included.
+   - TODO I might try zipping mine up that you can use or just some of then
+   - CUDA FFT on 8192 float chunks on memory mapped files of 16M each.
+   - Same with Intel MKL, compare results
    - Frequency domain features extracted per chunk
 
 3. **Signal Statistics (per chunk)**
@@ -43,7 +44,7 @@ This project processes high-throughput voltage telemetry collected from STM32F4x
    - Rolling Statistics (optional)  
    - Batch Timestamp / Time Offset  
    - Chunk Index  
-   - Anomaly Flags (e.g., saturation, dropout)
+   
 
 6. **Anomaly Detection**
    - CMSIS-DSP SVM classifier (trained externally via scikit-learn)  
@@ -70,12 +71,9 @@ This project processes high-throughput voltage telemetry collected from STM32F4x
 
 - Python 3.10+
 - NumPy, Matplotlib
-- scikit-learn (for training SVM if you want to train, it works for STM32F4xx voltage data).
 - cuFFT (CUDA FFT)
 - CUDA Toolkit + Visual Studio (for profiling)
-
----Project--
--I use VS, install CUDA SDK, CMSIS/DSP it is a zipfile in this project, just extract it and make it a peer to lib and the .cpp and .h file
+- Intel MKL - one API for intel machines on windows AFAIKT
 
 ---
 
@@ -117,14 +115,50 @@ cufft.lib
 
 ---
 
-### 🧩 Optional: CUDA Build Customization
+### 🧩 Option CUDA Build Customization 
 
 If you're compiling `.cu` files:
 - Set **Item Type** to `CUDA C/C++`
 - Use **CUDA C/C++ → Device → Code Generation** to match your GPU architecture (e.g. `compute_86,sm_86`)
 - Use **CUDA C/C++ → Common → Additional Options** for flags like `--use_fast_math` or `--ptxas-options=-v`
-
 ---
+
+## 🧠 MKL Setup for FFT Acceleration
+
+This project supports Intel MKL for high-performance CPU-based FFT processing. To enable MKL support:
+
+### ✅ Step 1: Install Intel oneAPI Base Toolkit
+
+Download and install from [Intel's official site](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit-download.html).
+
+Make sure to include:
+
+- **Intel MKL**
+- **Intel oneAPI command-line environment**
+
+### ✅ Step 2: Configure Visual Studio
+
+1. Open your project in Visual Studio
+2. Right-click your project → **Properties**
+3. Under **VC++ Directories**:
+   - **Include Directories**:  
+     `C:\Program Files (x86)\Intel\oneAPI\mkl\latest\include`
+   - **Library Directories**:  
+     `C:\Program Files (x86)\Intel\oneAPI\mkl\latest\lib\intel64`
+
+4. Under **Linker → Input → Additional Dependencies**:
+   Add:
+   ```
+   mkl_intel_lp64.lib
+   mkl_sequential.lib
+   mkl_core.lib
+   ```
+
+5. (Optional) If using dynamic linking, ensure `mkl_rt.dll` is in your runtime path
+
+### ✅ Step 3: Build and Run
+
+Once configured, the MKL backend will be available via `mkl_fft()` in the benchmark suite. You can toggle between CUDA and MKL using the runtime selector or build flags.
 
 ### 📺 Demo Coming soon...
 
