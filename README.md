@@ -169,5 +169,16 @@ A YouTube demo will showcase:
 - CUDA Insight profiling walkthrough
 
 ---
+### ⚔️ CUDA vs. MKL FFT Performance Comparison (this is prior implementing opening all the files handles first)
+
+| Chunk Size | Rows per FFT | CUDA Time (ms) | CUDA ns/float | MKL Time (ms) | MKL ns/float | Faster |
+|------------|---------------|----------------|----------------|----------------|----------------|--------|
+| 8192       | 32768         | 2532.28        | 9.43           | 1358.43        | 5.06           | MKL    |
+| 32768      | 8192          | 1772.56        | 6.60           | 1331.14        | 4.96           | MKL    |
+| 65536      | 4096          | 1619.60        | 6.03           | 1372.75        | 5.11           | MKL    |
+| 131072     | 2048          | 1482.64        | 5.52           | 1824.29        | 6.80           | CUDA   |
+| 262144     | 1024          | 1437.17        | 5.35           | 1915.56        | 7.14           | CUDA   |
+
+> **Note**: MKL outperforms CUDA at smaller chunk sizes due to lower overhead and CPU cache locality. CUDA overtakes at larger sizes where GPU parallelism and memory bandwidth dominate.
 
 Licence GPL v.2
