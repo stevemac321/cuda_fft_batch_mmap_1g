@@ -236,6 +236,7 @@ void cuda_fft(const char *mapdir, const size_t chunk_size)
   report.dump_to_text(cuda_report_file);
 #endif
 }
+#if 0
 void log_fft(const char *label, size_t rows, size_t chunk_size,
              std::chrono::nanoseconds elapsed) 
 {
@@ -246,4 +247,25 @@ void log_fft(const char *label, size_t rows, size_t chunk_size,
   std::printf("%s FFT (%zu rows), %zu floats took %.2f ms (%.2f ns/float)\n",
               label, rows, total_floats, elapsed_ms, ns_per_float);
 
+}
+#endif
+
+void log_fft(const char *label, size_t rows, size_t chunk_size,
+             std::chrono::nanoseconds elapsed) {
+  size_t total_floats = rows * chunk_size;
+  double elapsed_ms = elapsed.count() / 1e6;
+  double ns_per_float = static_cast<double>(elapsed.count()) / total_floats;
+
+  // Print to stdout
+  std::printf("%s FFT (%zu rows), %zu floats took %.2f ms (%.2f ns/float)\n",
+              label, rows, total_floats, elapsed_ms, ns_per_float);
+  // Only enable logging if none of these are defined
+#if !defined(LOG_TELEMETRY) && !defined(LOG_CUDA) && !defined(LOG_MKL)
+
+  // Append to perf.txt
+  if (out) {
+    out << label << "," << rows << "," << chunk_size << "," << total_floats
+        << "," << elapsed_ms << "," << ns_per_float << "\n";
+  }
+  #endif
 }

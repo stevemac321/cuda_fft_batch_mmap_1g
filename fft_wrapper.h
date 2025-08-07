@@ -26,6 +26,9 @@
 #include "mkl.h"
 #include <oleidl.h>
 
+extern std::ofstream out; // global perf log for the entire program, not just runs.
+
+
 struct SignalReport {
   int chunk_index = 0;
 
