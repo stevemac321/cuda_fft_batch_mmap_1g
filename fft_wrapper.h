@@ -152,7 +152,12 @@ struct FileMapping {
   HANDLE hMapping = nullptr;
   void *mapped_ptr = nullptr;
   size_t size = 0;
+  // Default constructor
+  FileMapping() = default;
 
+
+
+  // Destructor
   ~FileMapping() {
     if (mapped_ptr)
       UnmapViewOfFile(mapped_ptr);
@@ -162,74 +167,53 @@ struct FileMapping {
       CloseHandle(hFile);
   }
 
-  bool create(const std::wstring &path) {
-    hFile = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
-                        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (hFile == INVALID_HANDLE_VALUE) {
-      std::cerr << "Failed to open file: "
-                << std::string(path.begin(), path.end()) << "\n";
-      hFile = nullptr;
-      return false;
-    }
-
-    hMapping = CreateFileMappingW(hFile, nullptr, PAGE_READONLY, 0, 0, nullptr);
-    if (!hMapping) {
-      std::cerr << "Failed to create file mapping: "
-                << std::string(path.begin(), path.end()) << "\n";
-      CloseHandle(hFile);
-      hFile = nullptr;
-      return false;
-    }
-
-    mapped_ptr = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
-    if (!mapped_ptr) {
-      std::cerr << "Failed to map view of file: "
-                << std::string(path.begin(), path.end()) << "\n";
-      CloseHandle(hMapping);
-      CloseHandle(hFile);
-      hMapping = nullptr;
-      hFile = nullptr;
-      return false;
-    }
-
-    size = static_cast<size_t>(GetFileSize(hFile, nullptr));
-    if (size == 0 || size % sizeof(float) != 0) {
-      std::cerr << "Invalid file size: "
-                << std::string(path.begin(), path.end()) << "\n";
-      UnmapViewOfFile(mapped_ptr);
-      CloseHandle(hMapping);
-      CloseHandle(hFile);
-      mapped_ptr = nullptr;
-      hMapping = nullptr;
-      hFile = nullptr;
-      size = 0;
-      return false;
-    }
-
-    return true;
+  // Move constructor
+  FileMapping(FileMapping &&other) noexcept
+      : hFile(other.hFile), hMapping(other.hMapping),
+        mapped_ptr(other.mapped_ptr), size(other.size) {
+    other.hFile = nullptr;
+    other.hMapping = nullptr;
+    other.mapped_ptr = nullptr;
+    other.size = 0;
   }
 
+  // Move assignment
+  FileMapping &operator=(FileMapping &&other) noexcept {
+    if (this != &other) {
+      // Clean up current resources
+      if (mapped_ptr)
+        UnmapViewOfFile(mapped_ptr);
+      if (hMapping)
+        CloseHandle(hMapping);
+      if (hFile)
+        CloseHandle(hFile);
+
+      // Transfer ownership
+      hFile = other.hFile;
+      hMapping = other.hMapping;
+      mapped_ptr = other.mapped_ptr;
+      size = other.size;
+
+      // Null out other's handles
+      other.hFile = nullptr;
+      other.hMapping = nullptr;
+      other.mapped_ptr = nullptr;
+      other.size = 0;
+    }
+    return *this;
+  }
+
+  // Disable copy semantics
+  FileMapping(const FileMapping &) = delete;
+  FileMapping &operator=(const FileMapping &) = delete;
 };
 
-class FFTRun {
-public:
-  FFTRun(const std::string &mapdir, size_t chunk_size) 
-       : mapdir_(mapdir), chunk_size_(chunk_size){} 
-  virtual ~FFTRun() = default;
-
-protected:
-  std::string mapdir_;
-  size_t chunk_size_;
-
-  std::vector<FileMapping> mapped_files_;
-  void open_all_files();
-};
+FileMapping OpenMappedFile(const std::wstring &filepath);
 void cuda_fft(const char *mapdir, const size_t chunk_size = 8192);
 
 void mkl_fft(const char *mapdir, const size_t chunk_size = 8192);
 
 void log_fft(const char *label, size_t rows, size_t chunk_size,
              std::chrono::nanoseconds elapsed);
-
 
 

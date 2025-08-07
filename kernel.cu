@@ -9,6 +9,9 @@
 
 const char *memmap_dir =
     R"(C:\repos\CudaBigData\CudaBigData\memmaps)";
+
+static const size_t chunk_sizes[] = {8192, 32768, 65536, 131072, 262144};
+
 // END USER CODE
 
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
@@ -32,8 +35,11 @@ int main()
         fprintf(stderr, "addWithCuda failed!");
         return 1;
     }
-    cuda_fft(memmap_dir);
-    mkl_fft(memmap_dir);
+    for (int i = 0; i < 5; i++) {
+
+      cuda_fft(memmap_dir, chunk_sizes[i]);
+      mkl_fft(memmap_dir, chunk_sizes[i]);
+    }
 
     // cudaDeviceReset must be called before exiting in order for profiling and
     // tracing tools such as Nsight and Visual Profiler to show complete traces.

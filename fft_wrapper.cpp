@@ -1,7 +1,7 @@
 /*
 
 */
-#define LOG_TELEMETRY 
+//#define LOG_TELEMETRY 
 //#define LOG_MKL
 
 #include <cuda_runtime.h>
@@ -12,23 +12,66 @@ const char *cuda_report_file = "cuda_report.txt";
 
 namespace fs = std::filesystem;
 
-void FFTRun::open_all_files() 
-{
-  for (const auto &entry : std::filesystem::directory_iterator(mapdir_)) {
-    if (!entry.is_regular_file())
-      continue;
 
-    FileMapping fmap;
-    if (fmap.create(entry.path().wstring()))
-      mapped_files_.emplace_back(std::move(fmap));
+/// <summary>
+/// file handle opener
+/// </summary>
+/// <
+
+FileMapping OpenMappedFile(const std::wstring &filepath) {
+  HANDLE hFile =
+      CreateFileW(filepath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+
+  if (hFile == INVALID_HANDLE_VALUE) {
+    std::cerr << "Failed to open file: "
+              << std::string(filepath.begin(), filepath.end()) << "\n";
+    return FileMapping();
   }
+
+  HANDLE hMapping =
+      CreateFileMappingW(hFile, nullptr, PAGE_READONLY, 0, 0, nullptr);
+  if (!hMapping) {
+    std::cerr << "Failed to create file mapping: "
+              << std::string(filepath.begin(), filepath.end()) << "\n";
+    CloseHandle(hFile);
+    return FileMapping();
+  }
+  
+
+  size_t filesize = static_cast<size_t>(GetFileSize(hFile, nullptr));
+  if (filesize == 0 || filesize % sizeof(float) != 0) {
+    std::cerr << "Invalid file size: "
+              << std::string(filepath.begin(), filepath.end()) << "\n";
+    CloseHandle(hMapping);
+    CloseHandle(hFile);
+    return FileMapping();
+  }
+  
+
+  void *mapped = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
+  if (!mapped) {
+    std::cerr << "MapViewOfFile failed: "
+              << std::string(filepath.begin(), filepath.end()) << "\n";
+    CloseHandle(hMapping);
+    CloseHandle(hFile);
+    return FileMapping();
+  }
+
+  FileMapping result;
+  result.hFile = hFile;
+  result.hMapping = hMapping;
+  result.mapped_ptr = reinterpret_cast<float *>(mapped);
+  result.size = filesize;
+
+  return result;
 }
 
 void mkl_fft(const char *mapdir, const size_t chunk_size) {
 #ifdef LOG_TELEMETRY
   SignalReport report;
 #endif
-
+  std::vector<FileMapping> mapped_files;
   auto start = std::chrono::high_resolution_clock::now();
   auto voltage = std::make_unique<float[]>(chunk_size);
   auto fft_input = std::make_unique<float[]>(chunk_size * 2);
@@ -41,45 +84,15 @@ void mkl_fft(const char *mapdir, const size_t chunk_size) {
       continue;
 
     const std::wstring filepath = entry.path().wstring();
+    // HERE
+    FileMapping fm = OpenMappedFile(filepath);
+    if (fm.mapped_ptr) // only push valid mappings
+      mapped_files.push_back(std::move(fm));
+  }
+  for (const auto &fm : mapped_files) {
 
-    HANDLE hFile =
-        CreateFileW(filepath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
-                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (hFile == INVALID_HANDLE_VALUE) {
-      std::cerr << "Failed to open file: "
-                << std::string(filepath.begin(), filepath.end()) << "\n";
-      continue;
-    }
-
-    HANDLE hMapping =
-        CreateFileMappingW(hFile, nullptr, PAGE_READONLY, 0, 0, nullptr);
-    if (!hMapping) {
-      std::cerr << "Failed to create file mapping: "
-                << std::string(filepath.begin(), filepath.end()) << "\n";
-      CloseHandle(hFile);
-      continue;
-    }
-
-    size_t filesize = static_cast<size_t>(GetFileSize(hFile, nullptr));
-    if (filesize == 0 || filesize % sizeof(float) != 0) {
-      std::cerr << "Invalid file size: "
-                << std::string(filepath.begin(), filepath.end()) << "\n";
-      CloseHandle(hMapping);
-      CloseHandle(hFile);
-      continue;
-    }
-
-    void *mapped = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
-    if (!mapped) {
-      std::cerr << "MapViewOfFile failed: "
-                << std::string(filepath.begin(), filepath.end()) << "\n";
-      CloseHandle(hMapping);
-      CloseHandle(hFile);
-      continue;
-    }
-
-    float *data_ptr = reinterpret_cast<float *>(mapped);
-    size_t usable_floats = filesize / sizeof(float);
+    float *data_ptr = reinterpret_cast<float *>(fm.mapped_ptr);
+    size_t usable_floats = fm.size / sizeof(float);
     size_t chunks_in_file = usable_floats / chunk_size;
 
     for (size_t i = 0; i < chunks_in_file; ++i, ++row) {
@@ -115,9 +128,6 @@ void mkl_fft(const char *mapdir, const size_t chunk_size) {
 #endif
     }
 
-    UnmapViewOfFile(mapped);
-    CloseHandle(hMapping);
-    CloseHandle(hFile);
   }
 
   auto end = std::chrono::high_resolution_clock::now();
@@ -138,7 +148,7 @@ void cuda_fft(const char *mapdir, const size_t chunk_size)
 #ifdef LOG_TELEMETRY
   struct SignalReport report;
 #endif
-
+  std::vector<FileMapping> mapped_files;
   auto start = std::chrono::high_resolution_clock::now();
   auto voltage = std::make_unique<float[]>(chunk_size); 
   auto fft_input = std::make_unique<float[]>(chunk_size * 2); 
@@ -166,45 +176,15 @@ void cuda_fft(const char *mapdir, const size_t chunk_size)
 
     const std::wstring filepath = entry.path().wstring();
 
-    HANDLE hFile =
-        CreateFileW(filepath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
-                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    FileMapping fm = OpenMappedFile(filepath);
+    if (fm.mapped_ptr) // only push valid mappings
+      mapped_files.push_back(std::move(fm));
+  }
 
-    if (hFile == INVALID_HANDLE_VALUE) {
-      std::cerr << "Failed to open file: "
-                << std::string(filepath.begin(), filepath.end()) << "\n";
-      continue;
-    }
+  for (const auto &fm : mapped_files) {
 
-    HANDLE hMapping =
-        CreateFileMappingW(hFile, nullptr, PAGE_READONLY, 0, 0, nullptr);
-    if (!hMapping) {
-      std::cerr << "Failed to create file mapping: "
-                << std::string(filepath.begin(), filepath.end()) << "\n";
-      CloseHandle(hFile);
-      continue;
-    }
-
-    size_t filesize = static_cast<size_t>(GetFileSize(hFile, nullptr));
-    if (filesize == 0 || filesize % sizeof(float) != 0) {
-      std::cerr << "Invalid file size: "
-                << std::string(filepath.begin(), filepath.end()) << "\n";
-      CloseHandle(hMapping);
-      CloseHandle(hFile);
-      continue;
-    }
-
-    void *mapped = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
-    if (!mapped) {
-      std::cerr << "MapViewOfFile failed: "
-                << std::string(filepath.begin(), filepath.end()) << "\n";
-      CloseHandle(hMapping);
-      CloseHandle(hFile);
-      continue;
-    }
-
-    float *data_ptr = reinterpret_cast<float *>(mapped);
-    size_t usable_floats = filesize / sizeof(float);
+    float *data_ptr = reinterpret_cast<float *>(fm.mapped_ptr);
+    size_t usable_floats = fm.size / sizeof(float);
     size_t chunks_in_file = usable_floats / chunk_size;
 
 
@@ -242,10 +222,6 @@ void cuda_fft(const char *mapdir, const size_t chunk_size)
       }
 #endif
     }
-
-    UnmapViewOfFile(mapped);
-    CloseHandle(hMapping);
-    CloseHandle(hFile);
   }
 
   cufftDestroy(plan);
