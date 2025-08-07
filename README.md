@@ -18,7 +18,7 @@ This project processes high-throughput voltage telemetry collected from STM32F4x
 
 2. **FFT Processing**
    - scripts to capture voltage or any signal from your microcontroller included.
-   - TODO I might try zipping mine up that you can use or just some of then
+   - memmaps1.zip and memmaps2.zip are memory mapped files of volatage samples off my STM32F4xx controllers, they are just floats.  I could not give you the 1G, the zips contain four 16M memory mapped files.  Extract them into on directory and have const char *memmap_dir = specify that directory.  
    - CUDA FFT on 8192 float chunks on memory mapped files of 16M each.
    - Same with Intel MKL, compare results
    - Frequency domain features extracted per chunk
