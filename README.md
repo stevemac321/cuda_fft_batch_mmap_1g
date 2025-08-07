@@ -1,10 +1,10 @@
 ## 🚀 `cuda_fft_batch_mmap_1gb`
 ## add the .json code that captures all the global FFT data to pass to Matplotlib##
-### Overview
+### Overview  
 
 This project processes high-throughput voltage telemetry collected from STM32F4xx microcontrollers. It performs batched FFT analysis on 1GB of data using CUDA and Intel MKL libraries.  It generates detailed signal reports with Matplotlib. Performance metrics are captured using CUDA Insight and Visual Studio debugging tools.
 
-##NOTE## The file CudaFFT-Demo.pdf is the spec.  TODO: conditional compilation for telemetry data, separate from timing data, write to mmSignalReport, signal_report.py and benchmark.py.  
+##NOTE## The file CudaFFT-Demo.pdf is the spec.  TODO: Telemetry and matplotlib graphs are working without impacting perf.  I separate telemetry from perf.  I need to pipe the perf to a file.  I need to add steps on running the analyze_spectrum_report.py on the mkl_report.txt and cuda_report.txt.  Need to have a script that builds comparisons between two runs.  
 
 
 ---
