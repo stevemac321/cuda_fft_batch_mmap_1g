@@ -3,13 +3,12 @@
 #include "device_launch_parameters.h"
 
 #include <stdio.h>
+
 // USER CODE
 #include "fft_wrapper.h"
 
-
 const char *memmap_dir =
     R"(C:\repos\CudaBigData\CudaBigData\memmaps)";
-
 // END USER CODE
 
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);

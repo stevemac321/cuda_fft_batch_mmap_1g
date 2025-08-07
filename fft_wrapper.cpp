@@ -12,31 +12,28 @@ const char *cuda_report_file = "cuda_report.txt";
 
 namespace fs = std::filesystem;
 
-void mkl_fft(const char *mapdir, const size_t chunk_size) 
+void FFTRun::open_all_files() 
 {
-  struct SignalReport report;
-  std::vector<std::complex<float>> chunk_spectrum;
-  std::vector<std::vector<float>> spectrum_matrix;
+  for (const auto &entry : std::filesystem::directory_iterator(mapdir_)) {
+    if (!entry.is_regular_file())
+      continue;
+
+    FileMapping fmap;
+    if (fmap.create(entry.path().wstring()))
+      mapped_files_.emplace_back(std::move(fmap));
+  }
+}
+
+void mkl_fft(const char *mapdir, const size_t chunk_size) {
+#ifdef LOG_TELEMETRY
+  SignalReport report;
+#endif
 
   auto start = std::chrono::high_resolution_clock::now();
   auto voltage = std::make_unique<float[]>(chunk_size);
   auto fft_input = std::make_unique<float[]>(chunk_size * 2);
 
-  // Allocate device buffer for FFT
-  cufftComplex *d_data = nullptr;
-  cudaMalloc(&d_data, chunk_size * sizeof(cufftComplex));
-
-  // Create FFT plan
-  cufftHandle plan;
-  cufftResult plan_status = cufftPlan1d(&plan, chunk_size, CUFFT_C2C, 1);
-  if (plan_status != CUFFT_SUCCESS) {
-    std::fprintf(stderr, "FFT plan creation failed: %d\n", plan_status);
-    cudaFree(d_data);
-    return;
-  }
-
   std::printf("Beginning MKLMemMapFFT, chunk size: %zu\n", chunk_size);
-
   size_t row = 0;
 
   for (const auto &entry : std::filesystem::directory_iterator(mapdir)) {
@@ -48,7 +45,6 @@ void mkl_fft(const char *mapdir, const size_t chunk_size)
     HANDLE hFile =
         CreateFileW(filepath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
                     OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-
     if (hFile == INVALID_HANDLE_VALUE) {
       std::cerr << "Failed to open file: "
                 << std::string(filepath.begin(), filepath.end()) << "\n";
@@ -87,50 +83,28 @@ void mkl_fft(const char *mapdir, const size_t chunk_size)
     size_t chunks_in_file = usable_floats / chunk_size;
 
     for (size_t i = 0; i < chunks_in_file; ++i, ++row) {
-      std::memcpy(voltage.get(),
-                  data_ptr + i * chunk_size,   // replace this with CudaMemcpy
-                  chunk_size * sizeof(float)); // ditto
+      std::memcpy(voltage.get(), data_ptr + i * chunk_size,
+                  chunk_size * sizeof(float));
 
-    // Prepare FFT input: interleaved real/imag
-    for (size_t j = 0; j < chunk_size; ++j) {
-    fft_input[j * 2 + 0] = voltage[j]; // real
-    fft_input[j * 2 + 1] = 0.0f;       // imag
-    }
-      
-    DFTI_DESCRIPTOR_HANDLE descriptor;
-    MKL_LONG status;
+      // Prepare FFT input: interleaved real/imag
+      for (size_t j = 0; j < chunk_size; ++j) {
+        fft_input[j * 2 + 0] = voltage[j]; // real
+        fft_input[j * 2 + 1] = 0.0f;       // imag
+      }
 
-    status = DftiCreateDescriptor(&descriptor, DFTI_SINGLE, DFTI_COMPLEX, 1,chunk_size); status = DftiSetValue(descriptor, DFTI_PLACEMENT, DFTI_INPLACE);
-    status = DftiCommitDescriptor(descriptor);
-    status = DftiComputeForward(descriptor, fft_input.get());
-    status = DftiFreeDescriptor(&descriptor);
+      DFTI_DESCRIPTOR_HANDLE descriptor;
+      MKL_LONG status;
+
+      status = DftiCreateDescriptor(&descriptor, DFTI_SINGLE, DFTI_COMPLEX, 1,
+                                    chunk_size);
+      status = DftiSetValue(descriptor, DFTI_PLACEMENT, DFTI_INPLACE);
+      status = DftiCommitDescriptor(descriptor);
+      status = DftiComputeForward(descriptor, fft_input.get());
+      status = DftiFreeDescriptor(&descriptor);
 
 #ifdef LOG_TELEMETRY
-    // Convert FFT output to complex<float>
-    chunk_spectrum.clear();
-    chunk_spectrum.reserve(chunk_size);
-    for (size_t k = 0; k < chunk_size; ++k) {
-      float real = fft_input[k * 2 + 0];
-      float imag = fft_input[k * 2 + 1];
-      chunk_spectrum.emplace_back(real, imag);
-    }
-
-    // Compute magnitudes
-    std::vector<float> magnitudes;
-    magnitudes.reserve(chunk_size);
-    for (const auto &c : chunk_spectrum)
-      magnitudes.push_back(std::abs(c));
-
-    // Accumulate metrics
-    report.set_chunk_index(i);
-    report.compute_dominant_frequency(magnitudes);
-    report.compute_spectral_centroid(magnitudes);
-    report.compute_spectral_spread(magnitudes);
-    report.compute_power(magnitudes);
-    report.append_spectrum(magnitudes);
+      report.accumulate_spectrum(fft_input.get(), chunk_size, i);
 #endif
-
-
 
 #ifdef LOG_MKL
       for (size_t k = 0; k < chunk_size; ++k) {
@@ -147,19 +121,23 @@ void mkl_fft(const char *mapdir, const size_t chunk_size)
   }
 
   auto end = std::chrono::high_resolution_clock::now();
-  auto elapsed =std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+  auto elapsed =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
 
   log_fft("MKL Memmap", row, chunk_size, elapsed);
-  #ifdef LOG_TELEMETRY
-   report.dump_to_text(mkl_report_file);
-  #endif
-}
-//#define LOG_CUDA
+
+#ifdef LOG_TELEMETRY
+  report.dump_to_text(mkl_report_file);
+#endif
+} 
+/////////////////////////////////////////////////////////////////////
+//
+///////////////////////////////////////////////////////////////////////
 void cuda_fft(const char *mapdir, const size_t chunk_size) 
 {
+#ifdef LOG_TELEMETRY
   struct SignalReport report;
-  std::vector<std::complex<float>> chunk_spectrum;
-  std::vector<std::vector<float>> spectrum_matrix;
+#endif
 
   auto start = std::chrono::high_resolution_clock::now();
   auto voltage = std::make_unique<float[]>(chunk_size); 
@@ -254,28 +232,7 @@ void cuda_fft(const char *mapdir, const size_t chunk_size)
       cudaMemcpy(fft_input.get(), d_data, chunk_size * sizeof(cufftComplex),
                  cudaMemcpyDeviceToHost);
 #ifdef LOG_TELEMETRY
-      // Convert FFT output to complex<float>
-      chunk_spectrum.clear();
-      chunk_spectrum.reserve(chunk_size);
-      for (size_t k = 0; k < chunk_size; ++k) {
-        float real = fft_input[k * 2 + 0];
-        float imag = fft_input[k * 2 + 1];
-        chunk_spectrum.emplace_back(real, imag);
-      }
-
-      // Compute magnitudes
-      std::vector<float> magnitudes;
-      magnitudes.reserve(chunk_size);
-      for (const auto &c : chunk_spectrum)
-        magnitudes.push_back(std::abs(c));
-
-      // Accumulate metrics
-      report.set_chunk_index(i);
-      report.compute_dominant_frequency(magnitudes);
-      report.compute_spectral_centroid(magnitudes);
-      report.compute_spectral_spread(magnitudes);
-      report.compute_power(magnitudes);
-      report.append_spectrum(magnitudes);
+      report.accumulate_spectrum(fft_input.get(), chunk_size, i);
 #endif
 #ifdef LOG_CUDA
       for (size_t k = 0; k < chunk_size; ++k) {

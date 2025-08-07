@@ -24,6 +24,7 @@
 #include <windows.h>
 #include <cufft.h>
 #include "mkl.h"
+#include <oleidl.h>
 
 struct SignalReport {
   int chunk_index = 0;
@@ -35,6 +36,11 @@ struct SignalReport {
     std::vector<float> spectral_spread;
     std::vector<float> power;
   } freq_response;
+
+  std::vector<std::complex<float>> chunk_spectrum;
+  std::vector<float> magnitudes;
+  std::vector<std::vector<float>> spectrum_matrix;
+
 
   // Set chunk index
   void set_chunk_index(int idx) { chunk_index = idx; }
@@ -112,6 +118,111 @@ struct SignalReport {
 
     out.close();
   }
+  void accumulate_spectrum(const float *fft_output,
+                                         size_t chunk_size,
+                                         size_t chunk_index) {
+    // Convert interleaved FFT output to complex<float>
+    chunk_spectrum.clear();
+    chunk_spectrum.reserve(chunk_size);
+    for (size_t k = 0; k < chunk_size; ++k) {
+      float real = fft_output[k * 2 + 0];
+      float imag = fft_output[k * 2 + 1];
+      chunk_spectrum.emplace_back(real, imag);
+    }
+
+    // Compute magnitudes
+    magnitudes.clear();
+    magnitudes.reserve(chunk_size);
+    for (const auto &c : chunk_spectrum)
+      magnitudes.push_back(std::abs(c));
+
+    // Accumulate metrics
+    set_chunk_index(chunk_index);
+    compute_dominant_frequency(magnitudes);
+    compute_spectral_centroid(magnitudes);
+    compute_spectral_spread(magnitudes);
+    compute_power(magnitudes);
+    append_spectrum(magnitudes);
+  }
+};
+
+///////////////////////////////////////////////////////////
+struct FileMapping {
+  HANDLE hFile = nullptr;
+  HANDLE hMapping = nullptr;
+  void *mapped_ptr = nullptr;
+  size_t size = 0;
+
+  ~FileMapping() {
+    if (mapped_ptr)
+      UnmapViewOfFile(mapped_ptr);
+    if (hMapping)
+      CloseHandle(hMapping);
+    if (hFile)
+      CloseHandle(hFile);
+  }
+
+  bool create(const std::wstring &path) {
+    hFile = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hFile == INVALID_HANDLE_VALUE) {
+      std::cerr << "Failed to open file: "
+                << std::string(path.begin(), path.end()) << "\n";
+      hFile = nullptr;
+      return false;
+    }
+
+    hMapping = CreateFileMappingW(hFile, nullptr, PAGE_READONLY, 0, 0, nullptr);
+    if (!hMapping) {
+      std::cerr << "Failed to create file mapping: "
+                << std::string(path.begin(), path.end()) << "\n";
+      CloseHandle(hFile);
+      hFile = nullptr;
+      return false;
+    }
+
+    mapped_ptr = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
+    if (!mapped_ptr) {
+      std::cerr << "Failed to map view of file: "
+                << std::string(path.begin(), path.end()) << "\n";
+      CloseHandle(hMapping);
+      CloseHandle(hFile);
+      hMapping = nullptr;
+      hFile = nullptr;
+      return false;
+    }
+
+    size = static_cast<size_t>(GetFileSize(hFile, nullptr));
+    if (size == 0 || size % sizeof(float) != 0) {
+      std::cerr << "Invalid file size: "
+                << std::string(path.begin(), path.end()) << "\n";
+      UnmapViewOfFile(mapped_ptr);
+      CloseHandle(hMapping);
+      CloseHandle(hFile);
+      mapped_ptr = nullptr;
+      hMapping = nullptr;
+      hFile = nullptr;
+      size = 0;
+      return false;
+    }
+
+    return true;
+  }
+
+};
+
+class FFTRun {
+public:
+  FFTRun(const std::string &mapdir, size_t chunk_size) 
+       : mapdir_(mapdir), chunk_size_(chunk_size){} 
+  virtual ~FFTRun() = default;
+
+protected:
+  std::string mapdir_;
+  size_t chunk_size_;
+
+  std::vector<FileMapping> mapped_files_;
+  void open_all_files();
 };
 void cuda_fft(const char *mapdir, const size_t chunk_size = 8192);
 

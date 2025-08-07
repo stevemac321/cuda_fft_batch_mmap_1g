@@ -1,10 +1,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import sys
 
-# === CONFIG ===
-REPORT_FILE = "mkl_report.txt"
-OUTPUT_PNG = "mkl_report_summary.png"
+if len(sys.argv) < 2:
+    print("Usage: python analyse_spectrum_report.py [cuda|mkl|...]")
+    sys.exit(1)
+
+prefix = sys.argv[1]
+REPORT_FILE = prefix + "_report.txt"
+OUTPUT_PNG = prefix + "_report_summary.png"
 SAMPLE_RATE = 48000  # Hz
 FFT_SIZE = 1024      # Adjust if needed
 
