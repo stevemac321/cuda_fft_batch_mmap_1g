@@ -4,6 +4,8 @@
 
 #include <stdio.h>
 // USER CODE
+#include "fft_wrapper.h"
+
 // Benchmark: Intel MKL FFT (131072 samples) took 721.90 ms, CUDA FFT (131072 samples) took 129.90 ms
 const char *logfile1024 =
     R"(C:\repos\CudaBigData\CudaBigData\sniff_log1024.txt)"; // 131072
@@ -13,9 +15,7 @@ const char *logfileBatch =
 const char *memmap_dir =
     R"(C:\repos\CudaBigData\CudaBigData\memmaps)";
 
-
-#include "fft_wrapper.h"
-// END USER CODE
+    // END USER CODE
 
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
 
@@ -38,11 +38,8 @@ int main()
         fprintf(stderr, "addWithCuda failed!");
         return 1;
     }
-    //CUDAFFT(logfile1024,78,1024,128);
-    CUDAMemMapFFT(memmap_dir, 128);
-    // SVMOutliers();
-    //printf("{1,2,3,4,5} + {10,20,30,40,50} = {%d,%d,%d,%d,%d}\n",
-    //    c[0], c[1], c[2], c[3], c[4]);
+    cuda_fft(memmap_dir, 8192);
+    mkl_fft(memmap_dir, 8192);
 
     // cudaDeviceReset must be called before exiting in order for profiling and
     // tracing tools such as Nsight and Visual Profiler to show complete traces.
@@ -51,7 +48,6 @@ int main()
         fprintf(stderr, "cudaDeviceReset failed!");
         return 1;
     }
-    
     return 0;
 }
 
