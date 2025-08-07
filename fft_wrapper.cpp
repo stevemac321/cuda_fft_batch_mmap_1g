@@ -1,17 +1,23 @@
 /*
 
 */
+#define LOG_TELEMETRY 
+//#define LOG_MKL
 
 #include <cuda_runtime.h>
 #include "fft_wrapper.h"
 #include <filesystem> // For directory iteration
+const char *mkl_report_file = "mkl_report.txt";
+const char *cuda_report_file = "cuda_report.txt";
 
 namespace fs = std::filesystem;
 
-extern float outliers[10][128];
+void mkl_fft(const char *mapdir, const size_t chunk_size) 
+{
+  struct SignalReport report;
+  std::vector<std::complex<float>> chunk_spectrum;
+  std::vector<std::vector<float>> spectrum_matrix;
 
-//#define LOG_MKL
-void mkl_fft(const char *mapdir, const size_t chunk_size) {
   auto start = std::chrono::high_resolution_clock::now();
   auto voltage = std::make_unique<float[]>(chunk_size);
   auto fft_input = std::make_unique<float[]>(chunk_size * 2);
@@ -99,6 +105,32 @@ void mkl_fft(const char *mapdir, const size_t chunk_size) {
     status = DftiComputeForward(descriptor, fft_input.get());
     status = DftiFreeDescriptor(&descriptor);
 
+#ifdef LOG_TELEMETRY
+    // Convert FFT output to complex<float>
+    chunk_spectrum.clear();
+    chunk_spectrum.reserve(chunk_size);
+    for (size_t k = 0; k < chunk_size; ++k) {
+      float real = fft_input[k * 2 + 0];
+      float imag = fft_input[k * 2 + 1];
+      chunk_spectrum.emplace_back(real, imag);
+    }
+
+    // Compute magnitudes
+    std::vector<float> magnitudes;
+    magnitudes.reserve(chunk_size);
+    for (const auto &c : chunk_spectrum)
+      magnitudes.push_back(std::abs(c));
+
+    // Accumulate metrics
+    report.set_chunk_index(i);
+    report.compute_dominant_frequency(magnitudes);
+    report.compute_spectral_centroid(magnitudes);
+    report.compute_spectral_spread(magnitudes);
+    report.compute_power(magnitudes);
+    report.append_spectrum(magnitudes);
+#endif
+
+
 
 #ifdef LOG_MKL
       for (size_t k = 0; k < chunk_size; ++k) {
@@ -118,10 +150,17 @@ void mkl_fft(const char *mapdir, const size_t chunk_size) {
   auto elapsed =std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
 
   log_fft("MKL Memmap", row, chunk_size, elapsed);
+  #ifdef LOG_TELEMETRY
+   report.dump_to_text(mkl_report_file);
+  #endif
 }
 //#define LOG_CUDA
 void cuda_fft(const char *mapdir, const size_t chunk_size) 
 {
+  struct SignalReport report;
+  std::vector<std::complex<float>> chunk_spectrum;
+  std::vector<std::vector<float>> spectrum_matrix;
+
   auto start = std::chrono::high_resolution_clock::now();
   auto voltage = std::make_unique<float[]>(chunk_size); 
   auto fft_input = std::make_unique<float[]>(chunk_size * 2); 
@@ -214,7 +253,22 @@ void cuda_fft(const char *mapdir, const size_t chunk_size)
       // Copy result back to host
       cudaMemcpy(fft_input.get(), d_data, chunk_size * sizeof(cufftComplex),
                  cudaMemcpyDeviceToHost);
+#ifdef LOG_TELEMETRY
+      std::vector<float> magnitudes;
+      magnitudes.reserve(chunk_spectrum.size());
+      for (const auto &c : chunk_spectrum)
+        magnitudes.push_back(std::abs(c));
 
+      spectrum_matrix.push_back(std::move(magnitudes));
+    #if 0
+          report.set_chunk_index(i);
+          report.compute_dominant_frequency(magnitudes);
+          report.compute_spectral_centroid(magnitudes);
+          report.compute_spectral_spread(magnitudes);
+          report.compute_power(magnitudes);
+          report.append_spectrum(magnitudes);   
+    #endif
+#endif
 #ifdef LOG_CUDA
       for (size_t k = 0; k < chunk_size; ++k) {
         float real = fft_input[k * 2 + 0];
@@ -236,15 +290,19 @@ void cuda_fft(const char *mapdir, const size_t chunk_size)
   auto elapsed =
       std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
 
-  log_fft("DSP Memmap", row, chunk_size, elapsed);
+  log_fft("Cuda fft", row, chunk_size, elapsed);
+#ifdef LOG_TELEMETRY
+  report.dump_to_text(cuda_report_file);
+#endif
 }
-
 void log_fft(const char *label, size_t rows, size_t chunk_size,
-             std::chrono::nanoseconds elapsed) {
+             std::chrono::nanoseconds elapsed) 
+{
   size_t total_floats = rows * chunk_size;
   double elapsed_ms = elapsed.count() / 1e6;
   double ns_per_float = static_cast<double>(elapsed.count()) / total_floats;
 
   std::printf("%s FFT (%zu rows), %zu floats took %.2f ms (%.2f ns/float)\n",
               label, rows, total_floats, elapsed_ms, ns_per_float);
+
 }
