@@ -33,7 +33,7 @@ int main()
         fprintf(stderr, "addWithCuda failed!");
         return 1;
     }
-    //cuda_fft(memmap_dir);
+    cuda_fft(memmap_dir);
     mkl_fft(memmap_dir);
 
     // cudaDeviceReset must be called before exiting in order for profiling and

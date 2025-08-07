@@ -254,20 +254,28 @@ void cuda_fft(const char *mapdir, const size_t chunk_size)
       cudaMemcpy(fft_input.get(), d_data, chunk_size * sizeof(cufftComplex),
                  cudaMemcpyDeviceToHost);
 #ifdef LOG_TELEMETRY
+      // Convert FFT output to complex<float>
+      chunk_spectrum.clear();
+      chunk_spectrum.reserve(chunk_size);
+      for (size_t k = 0; k < chunk_size; ++k) {
+        float real = fft_input[k * 2 + 0];
+        float imag = fft_input[k * 2 + 1];
+        chunk_spectrum.emplace_back(real, imag);
+      }
+
+      // Compute magnitudes
       std::vector<float> magnitudes;
-      magnitudes.reserve(chunk_spectrum.size());
+      magnitudes.reserve(chunk_size);
       for (const auto &c : chunk_spectrum)
         magnitudes.push_back(std::abs(c));
 
-      spectrum_matrix.push_back(std::move(magnitudes));
-    #if 0
-          report.set_chunk_index(i);
-          report.compute_dominant_frequency(magnitudes);
-          report.compute_spectral_centroid(magnitudes);
-          report.compute_spectral_spread(magnitudes);
-          report.compute_power(magnitudes);
-          report.append_spectrum(magnitudes);   
-    #endif
+      // Accumulate metrics
+      report.set_chunk_index(i);
+      report.compute_dominant_frequency(magnitudes);
+      report.compute_spectral_centroid(magnitudes);
+      report.compute_spectral_spread(magnitudes);
+      report.compute_power(magnitudes);
+      report.append_spectrum(magnitudes);
 #endif
 #ifdef LOG_CUDA
       for (size_t k = 0; k < chunk_size; ++k) {
