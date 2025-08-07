@@ -88,7 +88,7 @@ This project processes high-throughput voltage telemetry collected from STM32F4x
 - **Visual Studio 2019** (MSVC v142)
 - **Visual Studio 2022** (MSVC v143)
 
-> ⚠️ If you're using VS 2022 17.10 or newer, CUDA 12.1 may require a newer toolkit (e.g. 12.4+) or manual workaround. CUDA 12.1 officially supports up to VS 2022 17.4.
+> ⚠️ If you're using VS 2022 17.10 or newer, CUDA 12.1 may require a newer toolkit (e.g. 12.4+) or manual workaround. CUDA 12.1 officially supports up to VS 2022 17.4.  I used 17.14.11 with Cuda 12.9
 
 ---
 
