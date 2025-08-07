@@ -238,4 +238,65 @@ A YouTube demo will showcase:
 | 65536      | 4096  | 1282.02   | 4.78     |
 | 131072     | 2048  | 1717.00   | 6.40     |
 | 262144     | 1024  | 1780.56   | 6.63     |
+
+---
+
+### 📘  — Workflow for Running CudaBigData Benchmark
+
+```markdown
+# CudaBigData Benchmark Workflow
+
+## 🔧 Setup
+Open two PowerShell terminals and activate the Python environment in both:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+## 🧪 Benchmarking Without Telemetry Logging
+
+1️⃣ **Terminal 1** — Start resource monitor:
+```powershell
+python monitor.py
+```
+
+2️⃣ **Terminal 2** — Run benchmark:
+```powershell
+cd C:\repos\CudaBigData
+.\x64\Release\CudaBigData.exe
+python benchmark.py
+```
+
+Monitor will auto-exit when `CudaBigData.exe` terminates.
+
+---
+
+## 📊 Benchmarking With Telemetry Logging (`LOG_TELEMETRY=1`)
+
+1️⃣ **Terminal 1** — Start resource monitor:
+```powershell
+python monitor.py
+```
+
+2️⃣ **Terminal 2** — Run benchmark with logging:
+```powershell
+cd C:\repos\CudaBigData
+$env:LOG_TELEMETRY=1
+.\x64\Release\CudaBigData.exe
+python benchmark.py
+```
+
+3️⃣ **Post-run Analysis** — Generate spectrum report:
+```powershell
+python analyze_spectrum_report.py
+```
+
+---
+
+## 📁 Notes
+- All Python scripts (`monitor.py`, `benchmark.py`, `analyze_spectrum_report.py`) should reside in the project root.
+- `utilization_log.txt` will be created automatically by `monitor.py`.
+- `LOG_TELEMETRY=1` enables detailed capture for post-analysis.
+```
+
 Licence GPL v.2
