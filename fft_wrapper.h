@@ -213,6 +213,8 @@ struct FileMapping {
 
 FileMapping OpenMappedFile(const std::wstring &filepath);
 void cuda_fft(const char *mapdir, const size_t chunk_size = 8192);
+void cuda_fft_pinned(const char *mapdir, const size_t chunk_size = 8192);
+void cuda_fft_unpinned(const char *mapdir, const size_t chunk_size = 8192);
 
 void mkl_fft(const char *mapdir, const size_t chunk_size = 8192);
 
