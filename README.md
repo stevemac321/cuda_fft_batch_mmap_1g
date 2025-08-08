@@ -5,6 +5,8 @@
 ## Overview
 
 This project processes high-throughput voltage telemetry collected from STM32F4xx microcontrollers. It performs batched FFT analysis on 1GB of data using CUDA and Intel MKL libraries. It generates detailed signal reports with Matplotlib. Performance metrics are captured using CUDA Insight and Visual Studio debugging tools.
+##NOTE Cuda 13.0 SDK came out, but the Windows 11 driver for my GPU is not out yet, so this is still 12.9
+-Also, I added pinned Cuda pinning host memory for easy fetch for chunks >= 64K, two versions of cuda_fft (pinned and unpinned) wrapper calls the correct one.
 
 > 📄 **Spec**: See `CudaFFT-Demo.pdf`  
 > ✅ **TODOs**:
